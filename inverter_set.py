@@ -110,10 +110,10 @@ def my_bearer_token():
     # Your access token extracted from response
     my_access_token = raw_data["data"]["access_token"]
 
-    the_bearer_token_string = ('Bearer '+ my_access_token)
+    bearer_token_string = ('Bearer '+ my_access_token)
     print('****************************************************')
     print('Your access token is: ' + my_access_token)
-    return my_access_token
+    return bearer_token_string
 
 # perform an example set
 def set_inverter_settings(start_time, end_time):
@@ -140,7 +140,7 @@ def calc_charge_time():
     
     r = requests.get(inverter_status_url, headers=headers_and_token)
     data = r.json()
-    #print(data["data"])
+    print(data)
     capacity_watts = data["data"]["correctCap"] * data["data"]["bmsVolt"]
     current_soc = data["data"]["bmsSoc"]
 
@@ -200,7 +200,7 @@ def get_agile_data(minutes=90, current_soc=100):
     
 
 if __name__ == "__main__":
-    my_bearer_token()
+    the_bearer_token_string = my_bearer_token()
 
     current_minutes, current_soc = calc_charge_time()
     charge_minutes = current_minutes + 15
