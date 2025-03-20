@@ -24,6 +24,7 @@ loginurl = ("https://api.sunsynk.net/oauth/token")
 # API call to set inverter settings
 the_bearer_token_string = None
 desired_soc = 100
+emergency_soc = 30
 min_soc = 14
 charging_rate = 5500
 default_start_time = datetime.time(2,0)  # 2:00 am
@@ -172,6 +173,10 @@ def get_agile_data(minutes=90, current_soc=100):
     max_date = df["valid_from"].max().date()
     date_mask = (df["valid_from"].dt.date.values >= max_date )
     df = df.loc[ date_mask ].sort_values( "valid_from", ascending=True ).set_index("valid_from")
+
+    # if soc is very low, force to earlier charge
+    if current_soc <= emergency_soc:
+        df = df.between_time("0:00", "5:00")
 
     # rolling average (assumed that each interval is 30 minutes)
     window_size = floor(minutes/30)
