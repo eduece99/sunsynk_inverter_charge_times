@@ -24,7 +24,7 @@ loginurl = ("https://api.sunsynk.net/oauth/token")
 # API call to set inverter settings
 the_bearer_token_string = None
 desired_soc = 100
-emergency_soc = 30
+emergency_soc = 35
 min_soc = 14
 charging_rate = 5500
 default_start_time = datetime.time(2,0)  # 2:00 am
