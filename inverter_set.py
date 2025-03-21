@@ -29,13 +29,16 @@ min_soc = 14
 charging_rate = 5500
 default_start_time = datetime.time(2,0)  # 2:00 am
 default_start_time_soc_threshold = 30.0
+today_date = datetime.datetime.now().date()
 
 api_base_url = "https://api.sunsynk.net/api/v1"
 set_url = f"{api_base_url}/common/setting/{inverter_id}/set"
 
 inverter_status_url = f"{api_base_url}/inverter/battery/{inverter_id}/realtime?sn={inverter_id}&lan=en"
 
-agile_url = "https://api.octopus.energy/v1/products/AGILE-24-04-03/electricity-tariffs/E-1R-AGILE-24-04-03-A/standard-unit-rates/?page_size=50"
+inverter_power_data_url = f'{api_base_url}/inverter/grid/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=pac'
+
+agile_url = "https://api.octopus.energy/v1/products/AGILE-24-04-03/electricity-tariffs/E-1R-AGILE-24-04-03-A/standard-unit-rates/?page_size=250"
 
 
 inverter_data = {
@@ -43,7 +46,7 @@ inverter_data = {
   "safetyType": "0",
   "battMode": "-1",
   "solarSell": "1",
-  "pvMaxLimit": "5000",
+  "pvMaxLimit": "5200",
   "energyMode": "0",
   "peakAndVallery": "1",
   "sysWorkMode": "2",
@@ -132,7 +135,30 @@ def set_inverter_settings(start_time, end_time):
     print(f'time bracket set to {inverter_data["sellTime1"]} and {inverter_data["sellTime2"]}')
 
 
-def calc_charge_time():
+def calc_charge_wattage():
+    headers_and_token = {
+        'Content-type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': the_bearer_token_string
+    }
+    
+    r = requests.get(inverter_power_data_url, headers=headers_and_token)
+    data = r.json()
+
+    #print(data["data"]["infos"][0]["records"])
+
+    dts = []
+    powers = []
+    for row in data["data"]["infos"][0]["records"]:
+        dts.append(row["time"])
+        powers.append(float(row["value"]))
+
+    df = pd.DataFrame.from_dict( {"datetime":dts, "power": powers} ).set_index("datetime")
+    print(df)
+    return( df.loc[ df["power"] > 0.0 , "power"].median() )
+
+
+def calc_charge_time(desired_charge_rate):
     headers_and_token = {
         'Content-type': 'application/json',
         'Accept': 'application/json',
@@ -146,7 +172,7 @@ def calc_charge_time():
     current_soc = data["data"]["bmsSoc"]
 
     watts_to_charge = (1.0 - (current_soc / 100.0)) * capacity_watts
-    charge_minutes = floor( 60 * watts_to_charge / charging_rate ) 
+    charge_minutes = floor( 60 * watts_to_charge / desired_charge_rate ) 
 
 
     print(charge_minutes)
@@ -168,6 +194,8 @@ def get_agile_data(minutes=90, current_soc=100):
     #df["valid_from"] = df["valid_from"].to_timestamp( )
     #df["valid_to"] = df["valid_to"].to_timestamp( )
 
+    # calculate median price for the whole dataset 
+    median_price = df["value_inc_vat"].median()
 
     # filter to most recent day
     max_date = df["valid_from"].max().date()
@@ -177,12 +205,18 @@ def get_agile_data(minutes=90, current_soc=100):
     # if soc is very low, force to earlier charge
     if current_soc <= emergency_soc:
         df = df.between_time("0:00", "5:00")
+    
 
     # rolling average (assumed that each interval is 30 minutes)
     window_size = floor(minutes/30)
     indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=window_size)  # look forward
     rolling_df = df.rolling(indexer).mean(numeric_only=True)
     min_day_price = rolling_df["value_inc_vat"].min()  
+
+    # take advantage of cheaper prices
+    if min_day_price < (median_price/2):
+        print( "adding extra charge time.  Upcoming min price is {min_day_price} as opposed to recent median of {median_price}" )
+        minutes += 15
 
 
     # choose best row and calculate start and end times
@@ -207,7 +241,19 @@ def get_agile_data(minutes=90, current_soc=100):
 if __name__ == "__main__":
     the_bearer_token_string = my_bearer_token()
 
-    current_minutes, current_soc = calc_charge_time()
+    actual_charge_rate = abs( calc_charge_wattage() )
+    print(f"median grid draw of {actual_charge_rate}")
+    desired_charge_rate = actual_charge_rate
+    
+    # arbitrary - if more than half of the default, we set this
+    if actual_charge_rate > (charging_rate/2):
+        print( f"Setting charge rate for time calculations to {actual_charge_rate} instead of defined {charging_rate} due to historic trends")
+        actual_charge_rate = actual_charge_rate
+    else:
+        desired_charge_rate = charging_rate
+
+
+    current_minutes, current_soc = calc_charge_time(desired_charge_rate)
     charge_minutes = current_minutes + 15
 
     start_time, end_time = get_agile_data(charge_minutes, current_soc) 
