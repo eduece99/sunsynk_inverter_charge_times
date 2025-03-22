@@ -215,7 +215,7 @@ def get_agile_data(minutes=90, current_soc=100):
 
     # take advantage of cheaper prices
     if min_day_price < (median_price/2):
-        print( "adding extra charge time.  Upcoming min price is {min_day_price} as opposed to recent median of {median_price}" )
+        print( f"adding extra charge time.  Upcoming min price is {min_day_price} as opposed to recent median of {median_price}" )
         minutes += 15
 
 
@@ -254,7 +254,7 @@ if __name__ == "__main__":
 
 
     current_minutes, current_soc = calc_charge_time(desired_charge_rate)
-    charge_minutes = current_minutes + 15
+    charge_minutes = current_minutes + 10
 
     start_time, end_time = get_agile_data(charge_minutes, current_soc) 
     
