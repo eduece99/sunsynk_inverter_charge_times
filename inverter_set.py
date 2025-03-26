@@ -37,6 +37,7 @@ set_url = f"{api_base_url}/common/setting/{inverter_id}/set"
 inverter_status_url = f"{api_base_url}/inverter/battery/{inverter_id}/realtime?sn={inverter_id}&lan=en"
 
 inverter_power_data_url = f'{api_base_url}/inverter/grid/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=pac'
+inverter_battery_power_data_url = f'{api_base_url}/inverter/battery/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=p_bms'
 
 agile_url = "https://api.octopus.energy/v1/products/AGILE-24-04-03/electricity-tariffs/E-1R-AGILE-24-04-03-A/standard-unit-rates/?page_size=250"
 
@@ -46,7 +47,7 @@ inverter_data = {
   "safetyType": "0",
   "battMode": "-1",
   "solarSell": "1",
-  "pvMaxLimit": "5200",
+  "pvMaxLimit": "5400",
   "energyMode": "0",
   "peakAndVallery": "1",
   "sysWorkMode": "2",
@@ -57,7 +58,7 @@ inverter_data = {
   "sellTime5": "16:00",
   "sellTime6": "21:00",
   "sellTime1Pac": charging_rate,
-  "sellTime2Pac": "4000",
+  "sellTime2Pac": charging_rate,
   "sellTime3Pac": "4000",
   "sellTime4Pac": "4000",
   "sellTime5Pac": "4000",
@@ -135,7 +136,7 @@ def set_inverter_settings(start_time, end_time):
     print(f'time bracket set to {inverter_data["sellTime1"]} and {inverter_data["sellTime2"]}')
 
 
-def calc_charge_wattage():
+def calc_inverter_charge_wattage():
     headers_and_token = {
         'Content-type': 'application/json',
         'Accept': 'application/json',
@@ -156,6 +157,29 @@ def calc_charge_wattage():
     df = pd.DataFrame.from_dict( {"datetime":dts, "power": powers} ).set_index("datetime")
     print(df)
     return( df.loc[ df["power"] > 0.0 , "power"].median() )
+
+
+def calc_battery_charge_wattage():
+    headers_and_token = {
+        'Content-type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': the_bearer_token_string
+    }
+    
+    r = requests.get(inverter_battery_power_data_url, headers=headers_and_token)
+    data = r.json()
+
+    #print(data["data"]["infos"][0]["records"])
+
+    dts = []
+    powers = []
+    for row in data["data"]["infos"][0]["records"]:
+        dts.append(row["time"])
+        powers.append(float(row["value"]))
+
+    df = pd.DataFrame.from_dict( {"datetime":dts, "power": powers} ).set_index("datetime")
+    print(df)
+    return( df.loc[ df["power"] < 0.0 , "power"].min() )
 
 
 def calc_charge_time(desired_charge_rate):
@@ -241,8 +265,8 @@ def get_agile_data(minutes=90, current_soc=100):
 if __name__ == "__main__":
     the_bearer_token_string = my_bearer_token()
 
-    actual_charge_rate = abs( calc_charge_wattage() )
-    print(f"median grid draw of {actual_charge_rate}")
+    actual_charge_rate = abs( calc_battery_charge_wattage() )
+    print(f"best battery charge rate of {actual_charge_rate}")
     desired_charge_rate = actual_charge_rate
     
     # arbitrary - if more than half of the default, we set this
