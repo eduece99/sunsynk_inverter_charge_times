@@ -9,7 +9,7 @@ import json
 from io import StringIO 
 import pandas as pd
 import datetime
-from math import floor
+from math import floor, ceil
 
 
 # Enter your username and password that you created on the Sunsynk website.
@@ -231,16 +231,19 @@ def get_agile_data(minutes=90, current_soc=100):
         df = df.between_time("0:00", "5:00")
     
 
+    # take advantage of cheaper prices
+    min_interval_price = df["value_inc_vat"].min()  
+    if min_interval_price < (median_price/1.75):
+        print( f"adding extra charge time.  Upcoming min price is {min_interval_price} as opposed to recent median of {median_price}" )
+        minutes += 30
+
     # rolling average (assumed that each interval is 30 minutes)
     window_size = floor(minutes/30)
     indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=window_size)  # look forward
     rolling_df = df.rolling(indexer).mean(numeric_only=True)
     min_day_price = rolling_df["value_inc_vat"].min()  
 
-    # take advantage of cheaper prices
-    if min_day_price < (median_price/2):
-        print( f"adding extra charge time.  Upcoming min price is {min_day_price} as opposed to recent median of {median_price}" )
-        minutes += 15
+    
 
 
     # choose best row and calculate start and end times
@@ -279,7 +282,11 @@ if __name__ == "__main__":
 
     current_minutes, current_soc = calc_charge_time(desired_charge_rate)
     charge_minutes = current_minutes + 10
+<<<<<<< HEAD
+    
+=======
 
+>>>>>>> refs/remotes/origin/main
     start_time, end_time = get_agile_data(charge_minutes, current_soc) 
     
     set_inverter_settings(start_time, end_time)
