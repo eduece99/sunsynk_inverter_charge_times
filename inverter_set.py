@@ -282,11 +282,7 @@ if __name__ == "__main__":
 
     current_minutes, current_soc = calc_charge_time(desired_charge_rate)
     charge_minutes = current_minutes + 10
-<<<<<<< HEAD
     
-=======
-
->>>>>>> refs/remotes/origin/main
     start_time, end_time = get_agile_data(charge_minutes, current_soc) 
     
     set_inverter_settings(start_time, end_time)
