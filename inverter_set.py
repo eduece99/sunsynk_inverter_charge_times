@@ -230,6 +230,7 @@ def get_agile_data(minutes=90, current_soc=100):
     if current_soc <= emergency_soc:
         df = df.between_time("0:00", "5:00")
     
+
     # take advantage of cheaper prices
     min_interval_price = df["value_inc_vat"].min()  
     if min_interval_price < (median_price/1.75):
@@ -237,7 +238,7 @@ def get_agile_data(minutes=90, current_soc=100):
         minutes += 30
 
     # rolling average (assumed that each interval is 30 minutes)
-    window_size = ceil(minutes/30)
+    window_size = floor(minutes/30)
     indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=window_size)  # look forward
     rolling_df = df.rolling(indexer).mean(numeric_only=True)
     min_day_price = rolling_df["value_inc_vat"].min()  
@@ -281,7 +282,11 @@ if __name__ == "__main__":
 
     current_minutes, current_soc = calc_charge_time(desired_charge_rate)
     charge_minutes = current_minutes + 10
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> refs/remotes/origin/main
     start_time, end_time = get_agile_data(charge_minutes, current_soc) 
     
     set_inverter_settings(start_time, end_time)
