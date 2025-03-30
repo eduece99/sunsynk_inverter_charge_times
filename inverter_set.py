@@ -221,6 +221,15 @@ def get_agile_data():
     return df
 
 
+def calc_negative_windows(df):
+    df_neg = df.loc[ df["value_inc_vat"] < 0 ]
+
+    df_neg["valid_from_next"] = df_neg["valid_from"].shift()
+
+    # filter where there are consecutive matches
+    mask = df_neg["valid_to"] == df_neg["valid_from_next"]
+
+
 def get_times(df, minutes=90, current_soc=100):
 
     # calculate median price for the whole dataset 
@@ -250,13 +259,6 @@ def get_times(df, minutes=90, current_soc=100):
     min_day_price = rolling_df["value_inc_vat"].min()  
 
     
-def calc_negative_windows(df):
-    df_neg = df.loc[ df["value_inc_vat"] < 0 ]
-
-    df_neg["valid_from_next"] = df_neg["valid_from"].shift()
-
-    # filter where there are consecutive matches
-    mask = df_neg["valid_to"] == df_neg["valid_from_next"]
 
 
     # choose best row and calculate start and end times
