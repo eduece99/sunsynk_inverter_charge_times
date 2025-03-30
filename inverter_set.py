@@ -13,9 +13,9 @@ from math import floor, ceil
 
 
 # Enter your username and password that you created on the Sunsynk website.
-my_user_email=str(sys.argv[1])
-my_user_password=str(sys.argv[2])
-inverter_id=str(sys.argv[3])
+my_user_email=str(sys.argv[1]) if len(sys.argv) > 1 else None
+my_user_password=str(sys.argv[2]) if len(sys.argv) > 2 else None
+inverter_id=str(sys.argv[3]) if len(sys.argv) > 3 else None
 
 #loginurl = ('https://pv.inteless.com/oauth/token')
 loginurl = ("https://api.sunsynk.net/oauth/token")
@@ -203,7 +203,7 @@ def calc_charge_time(desired_charge_rate):
     return( charge_minutes, current_soc )
 
 
-def get_agile_data(minutes=90, current_soc=100):
+def get_agile_data():
     r = requests.get(agile_url)
     data = r.json()
     #df = pd.read_json( StringIO(data) )
@@ -218,8 +218,14 @@ def get_agile_data(minutes=90, current_soc=100):
     #df["valid_from"] = df["valid_from"].to_timestamp( )
     #df["valid_to"] = df["valid_to"].to_timestamp( )
 
+    return df
+
+
+def get_times(df, minutes=90, current_soc=100):
+
     # calculate median price for the whole dataset 
     median_price = df["value_inc_vat"].median()
+    #print(median_price)
 
     # filter to most recent day
     max_date = df["valid_from"].max().date()
@@ -238,16 +244,25 @@ def get_agile_data(minutes=90, current_soc=100):
         minutes += 30
 
     # rolling average (assumed that each interval is 30 minutes)
-    window_size = floor(minutes/30)
+    window_size = ceil(minutes/30)
     indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=window_size)  # look forward
     rolling_df = df.rolling(indexer).mean(numeric_only=True)
     min_day_price = rolling_df["value_inc_vat"].min()  
 
     
+def calc_negative_windows(df):
+    df_neg = df.loc[ df["value_inc_vat"] < 0 ]
+
+    df_neg["valid_from_next"] = df_neg["valid_from"].shift()
+
+    # filter where there are consecutive matches
+    mask = df_neg["valid_to"] == df_neg["valid_from_next"]
 
 
     # choose best row and calculate start and end times
     cheapest_row = rolling_df.loc[ rolling_df["value_inc_vat"] == min_day_price ]
+    print(f"cheapest row of rolling data with price of {min_day_price}:")
+    print(cheapest_row)
 
     if current_soc < default_start_time_soc_threshold:
         start_time = cheapest_row.index.replace( hour=default_start_time.hour, minute=default_start_time.minute  )
@@ -283,6 +298,8 @@ if __name__ == "__main__":
     current_minutes, current_soc = calc_charge_time(desired_charge_rate)
     charge_minutes = current_minutes + 10
     
-    start_time, end_time = get_agile_data(charge_minutes, current_soc) 
+    costs_df = get_agile_data()
+    print(costs_df)
+    start_time, end_time = get_times(costs_df, minutes=charge_minutes, current_soc=current_soc) 
     
     set_inverter_settings(start_time, end_time)
