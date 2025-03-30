@@ -229,6 +229,8 @@ def calc_negative_windows(df):
     # filter where there are consecutive matches
     mask = df_neg["valid_to"] == df_neg["valid_from_next"]
 
+    
+
 
 def get_times(df, minutes=90, current_soc=100):
 
