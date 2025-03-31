@@ -222,14 +222,25 @@ def get_agile_data():
 
 
 def calc_negative_windows(df):
-    df_neg = df.loc[ df["value_inc_vat"] < 0 ]
+    df_neg = df.loc[ df["value_inc_vat"] < 0 ].set_index("valid_from")
+    
 
     df_neg["valid_from_next"] = df_neg["valid_from"].shift()
+    df_neg2 = df_neg.reindex(daily_rng).fillna(0)
 
     # filter where there are consecutive matches
     mask = df_neg["valid_to"] == df_neg["valid_from_next"]
 
-    
+    df_neg2 = df_neg[mask]
+    daily_rng = pd.date_range(df_neg["valid_from"].iloc[-1], periods=48, freq='30min')
+
+    df_neg2 = df_neg.reindex(daily_rng).fillna(0)
+    df['ones'] = df.cumsum()
+
+    # aggregage (groupby) based on the cumsum, filter where occurrence > 1, and use these to choose boundaries
+
+    # different indexers may be useful here
+    # https://pandas.pydata.org/docs/user_guide/window.html#custom-window-rolling
 
 
 def get_times(df, minutes=90, current_soc=100):
