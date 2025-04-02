@@ -215,6 +215,11 @@ def get_agile_data():
     # type conversion
     df["valid_from"] = pd.to_datetime( df["valid_from"] )
     df["valid_to"] = pd.to_datetime( df["valid_to"] )
+
+    # account for daylight savings
+    df["valid_from"] = df["valid_from"].apply(lambda r: r.tz_convert("Europe/London") )
+    df["valid_to"] = df["valid_to"].apply(lambda r: r.tz_convert("Europe/London") )
+
     #df["valid_from"] = df["valid_from"].to_timestamp( )
     #df["valid_to"] = df["valid_to"].to_timestamp( )
 
@@ -263,7 +268,10 @@ def get_times(df, minutes=90, current_soc=100):
     min_interval_price = df["value_inc_vat"].min()  
     if min_interval_price < (median_price/1.75):
         print( f"adding extra charge time.  Upcoming min price is {min_interval_price} as opposed to recent median of {median_price}" )
-        minutes += 30
+        minutes += 20
+    
+    if min_interval_price < (median_price/4.0):
+        minutes += 20
 
     # rolling average (assumed that each interval is 30 minutes)
     window_size = ceil(minutes/30)
