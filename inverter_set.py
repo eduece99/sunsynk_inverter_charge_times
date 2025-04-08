@@ -38,8 +38,8 @@ inverter_status_url = f"{api_base_url}/inverter/battery/{inverter_id}/realtime?s
 
 inverter_power_data_url = f'{api_base_url}/inverter/grid/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=pac'
 inverter_battery_power_data_url = f'{api_base_url}/inverter/battery/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=p_bms'
-
-agile_url = "https://api.octopus.energy/v1/products/AGILE-24-04-03/electricity-tariffs/E-1R-AGILE-24-04-03-A/standard-unit-rates/?page_size=250"
+agile_page_size = 250
+agile_url = f"https://api.octopus.energy/v1/products/AGILE-24-04-03/electricity-tariffs/E-1R-AGILE-24-04-03-A/standard-unit-rates/?page_size={agile_page_size}"
 
 
 inverter_data = {
@@ -227,20 +227,16 @@ def get_agile_data():
 
 
 def calc_negative_windows(df):
-    df_neg = df.loc[ df["value_inc_vat"] < 0 ].set_index("valid_from")
-    
 
-    df_neg["valid_from_next"] = df_neg["valid_from"].shift()
-    df_neg2 = df_neg.reindex(daily_rng).fillna(0)
+    df_windowing = df
+    df_windowing["positive"] = df_windowing["value_inc_vat"] >= 0
+    df_windowing["group"] = df_windowing["positive"].cumsum()
 
-    # filter where there are consecutive matches
-    mask = df_neg["valid_to"] == df_neg["valid_from_next"]
+    df_neg = df_windowing.loc[ df_windowing["positive"] == False ]
 
-    df_neg2 = df_neg[mask]
-    daily_rng = pd.date_range(df_neg["valid_from"].iloc[-1], periods=48, freq='30min')
-
-    df_neg2 = df_neg.reindex(daily_rng).fillna(0)
-    df['ones'] = df.cumsum()
+    boundaries_df = df_neg.groupby(by="group") 
+    # boundaries_df.min()  
+    return(boundaries_df)
 
     # aggregage (groupby) based on the cumsum, filter where occurrence > 1, and use these to choose boundaries
 
@@ -257,6 +253,10 @@ def get_times(df, minutes=90, current_soc=100):
     # filter to most recent day
     max_date = df["valid_from"].max().date()
     date_mask = (df["valid_from"].dt.date.values >= max_date )
+
+
+
+
     df = df.loc[ date_mask ].sort_values( "valid_from", ascending=True ).set_index("valid_from")
 
     # if soc is very low, force to earlier charge
@@ -297,10 +297,19 @@ def get_times(df, minutes=90, current_soc=100):
     end_time = (cheapest_row.index + datetime.timedelta(minutes=minutes)).time[0]
     print(end_time)
 
-    return(start_time.strftime("%H:%M"), end_time.strftime("%H:%M"))
+    return(minutes, start_time.strftime("%H:%M"), end_time.strftime("%H:%M"))
     
     
-    
+
+def best_negative_window(row=None, charge_minutes=None):
+    """
+    Intended to be used with pd.DataFrame.apply
+    """
+    timedelta_diff = row["valid_to"].max() - row["valid_from"].min()
+    minutes = timedelta_diff.seconds / 60.0
+    start_time = row["valid_from"].min().strftime("%H:%M")
+    end_time = row["valid_to"].max().strftime("%H:%M")
+    return(minutes, start_time, end_time)
     
 
 if __name__ == "__main__":
@@ -321,8 +330,29 @@ if __name__ == "__main__":
     current_minutes, current_soc = calc_charge_time(desired_charge_rate)
     charge_minutes = current_minutes + 10
     
+    # agile data 
     costs_df = get_agile_data()
+    
+
     print(costs_df)
-    start_time, end_time = get_times(costs_df, minutes=charge_minutes, current_soc=current_soc) 
+    current_minutes, start_time, end_time = get_times(costs_df, minutes=charge_minutes, current_soc=current_soc) 
+
+    # handle negative windows
+    # filter on recent dates (now)
+    # calc time window - if better than charge_minutes then set to these
+    dtn = pd.Timestamp(datetime.datetime.now()).tz_localize("Europe/London")
+    costs_df_recent = costs_df.loc[ costs_df["valid_from"] >= dtn ]
+
+    b_df = calc_negative_windows(costs_df_recent)
+    nw_df = b_df.apply(best_negative_window)
+    print(nw_df)
+    if len(nw_df) > 0:
+        for item in nw_df.items():
+            if item[1][0] > current_minutes:
+                current_minutes = item[1][0]
+                start_time=item[1][1]
+                end_time=item[1][2]
+                print( f"Found large negative cost window, resetting times to {item[1][1]} and {item[1][2]}")
+        
     
     set_inverter_settings(start_time, end_time)
