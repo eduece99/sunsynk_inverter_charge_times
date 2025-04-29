@@ -23,7 +23,7 @@ loginurl = ("https://api.sunsynk.net/oauth/token")
 
 # API call to set inverter settings
 the_bearer_token_string = None
-desired_soc = 100
+desired_soc = 90
 emergency_soc = 35
 min_soc = 14
 charging_rate = 5500
@@ -99,15 +99,15 @@ inverter_data = {
 }
 
 # This function will print your bearer/access token
-def my_bearer_token():
+def my_bearer_token( email, pw):
     headers = {
     'Content-type':'application/json',
     'Accept':'application/json'
     }
 
     payload = {
-        "username": my_user_email,
-        "password": my_user_password,
+        "username": email,
+        "password": pw,
         "grant_type":"password",
         "client_id":"csp-web"
         }
@@ -121,7 +121,7 @@ def my_bearer_token():
     return bearer_token_string
 
 # perform an example set
-def set_inverter_settings(start_time, end_time):
+def set_inverter_settings(start_time, end_time, soc_cap=100):
     headers_and_token = {
         'Content-type': 'application/json',
         'Accept': 'application/json',
@@ -129,6 +129,7 @@ def set_inverter_settings(start_time, end_time):
     }
     inverter_data["sellTime1"] = start_time
     inverter_data["sellTime2"] = end_time
+    inverter_data["cap1"] = soc_cap
     
     r = requests.post(set_url, headers=headers_and_token, json=inverter_data)
 
@@ -137,6 +138,9 @@ def set_inverter_settings(start_time, end_time):
 
 
 def calc_inverter_charge_wattage():
+    """
+    Not currently used, below function supercedes this
+    """
     headers_and_token = {
         'Content-type': 'application/json',
         'Accept': 'application/json',
@@ -160,6 +164,9 @@ def calc_inverter_charge_wattage():
 
 
 def calc_battery_charge_wattage():
+    """
+    Calculates the charge rate of the battery
+    """
     headers_and_token = {
         'Content-type': 'application/json',
         'Accept': 'application/json',
@@ -182,7 +189,7 @@ def calc_battery_charge_wattage():
     return( df.loc[ df["power"] < 0.0 , "power"].min() )
 
 
-def calc_charge_time(desired_charge_rate):
+def calc_charge_time(desired_charge_rate, soc_cap=100.0):
     headers_and_token = {
         'Content-type': 'application/json',
         'Accept': 'application/json',
@@ -195,12 +202,12 @@ def calc_charge_time(desired_charge_rate):
     capacity_watts = data["data"]["correctCap"] * data["data"]["bmsVolt"]
     current_soc = data["data"]["bmsSoc"]
 
-    watts_to_charge = (1.0 - (current_soc / 100.0)) * capacity_watts
+    watts_to_charge = (1.0 - (current_soc / soc_cap)) * capacity_watts
     charge_minutes = floor( 60 * watts_to_charge / desired_charge_rate ) 
 
 
     print(charge_minutes)
-    return( charge_minutes, current_soc )
+    return( max( charge_minutes, 0 ), current_soc )
 
 
 def get_agile_data():
@@ -313,7 +320,7 @@ def best_negative_window(row=None, charge_minutes=None):
     
 
 if __name__ == "__main__":
-    the_bearer_token_string = my_bearer_token()
+    the_bearer_token_string = my_bearer_token(my_user_email, my_user_password)
 
     actual_charge_rate = abs( calc_battery_charge_wattage() )
     print(f"best battery charge rate of {actual_charge_rate}")
@@ -327,8 +334,9 @@ if __name__ == "__main__":
         desired_charge_rate = charging_rate
 
 
-    current_minutes, current_soc = calc_charge_time(desired_charge_rate)
+    current_minutes, current_soc = calc_charge_time(desired_charge_rate, soc_cap = desired_soc)
     charge_minutes = current_minutes + 10
+    print( f"Setting charging minutes to {charge_minutes} to reach desired battery charge % of {desired_soc}")
     
     # agile data 
     costs_df = get_agile_data()
@@ -355,4 +363,4 @@ if __name__ == "__main__":
                 print( f"Found large negative cost window, resetting times to {item[1][1]} and {item[1][2]}")
         
     
-    set_inverter_settings(start_time, end_time)
+    set_inverter_settings(start_time, end_time, soc_cap=desired_soc)
