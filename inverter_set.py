@@ -10,6 +10,7 @@ from io import StringIO
 import pandas as pd
 import datetime
 from math import floor, ceil
+#import typer
 
 
 # Enter your username and password that you created on the Sunsynk website.
@@ -130,6 +131,8 @@ def set_inverter_settings(start_time, end_time, soc_cap=100):
     inverter_data["sellTime1"] = start_time
     inverter_data["sellTime2"] = end_time
     inverter_data["cap1"] = soc_cap
+
+    print(f"setting time bracket for charging to {start_time}-{end_time} with cap of {soc_cap} % ")
     
     r = requests.post(set_url, headers=headers_and_token, json=inverter_data)
 
@@ -278,6 +281,9 @@ def get_times(df, minutes=90, current_soc=100):
         minutes += 20
     
     if min_interval_price < (median_price/4.0):
+        print( f"adding yet more charge time.  Upcoming min price is {min_interval_price} as opposed to recent median of {median_price}, and setting max SOC to 100%" )
+        global desired_soc  # TODO ugly, should rewrite to object oriented
+        desired_soc = 100  # seeing as it's dirt cheap, why not?
         minutes += 20
 
     # rolling average (assumed that each interval is 30 minutes)
