@@ -255,16 +255,24 @@ def calc_negative_windows(df):
 
 
 def get_times(df, minutes=90, current_soc=100):
+    """
+    Returns the times (min, max) to set the Sunsynk API to for charging
+
+    Doesn't contain which day, just the times.  Care must be taken to adjust for correct day!
+    """
 
     # calculate median price for the whole dataset 
     median_price = df["value_inc_vat"].median()
     #print(median_price)
 
     # filter to most recent day
-    max_date = df["valid_from"].max().date()
-    date_mask = (df["valid_from"].dt.date.values >= max_date )
+    #max_date = df["valid_from"].max().date()
+    #date_mask = (df["valid_from"].dt.date.values >= max_date )
 
-
+    # filter to next 24 hours from current time
+    dt_now = pd.to_datetime('today').tz_localize("Europe/London") 
+    dt_now_p24 = dt_now + datetime.timedelta(days=1)
+    date_mask = ( df["valid_from"] >= dt_now ) & ( df["valid_from"] < dt_now_p24 )
 
 
     df = df.loc[ date_mask ].sort_values( "valid_from", ascending=True ).set_index("valid_from")
@@ -274,15 +282,19 @@ def get_times(df, minutes=90, current_soc=100):
         df = df.between_time("0:00", "5:00")
     
 
+    global desired_soc  # TODO ugly, should rewrite to object oriented
+
     # take advantage of cheaper prices
     min_interval_price = df["value_inc_vat"].min()  
     if min_interval_price < (median_price/1.75):
         print( f"adding extra charge time.  Upcoming min price is {min_interval_price} as opposed to recent median of {median_price}" )
+        
+        desired_soc = 90  # seeing as it's cheaprt, why not?
         minutes += 20
     
-    if min_interval_price < (median_price/4.0):
+    if min_interval_price < (median_price/3.0):
         print( f"adding yet more charge time.  Upcoming min price is {min_interval_price} as opposed to recent median of {median_price}, and setting max SOC to 100%" )
-        global desired_soc  # TODO ugly, should rewrite to object oriented
+        
         desired_soc = 100  # seeing as it's dirt cheap, why not?
         minutes += 20
 
