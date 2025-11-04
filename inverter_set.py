@@ -122,22 +122,32 @@ def my_bearer_token( email, pw):
     return bearer_token_string
 
 # perform an example set
-def set_inverter_settings(start_time, end_time, soc_cap=100):
+def set_inverter_settings(times, soc_cap=100):
     headers_and_token = {
         'Content-type': 'application/json',
         'Accept': 'application/json',
         'Authorization': the_bearer_token_string
     }
-    inverter_data["sellTime1"] = start_time
-    inverter_data["sellTime2"] = end_time
-    inverter_data["cap1"] = soc_cap
 
-    print(f"setting time bracket for charging to {start_time}-{end_time} with cap of {soc_cap} % ")
+    for index in range(0, len(times), 1 ):
+        data_time_index = f"sellTime{index+1}" 
+        data_cap_index = f"cap{index+1}" 
+        timeon_index = f"time{index}on"  # note that time0on does not exist, this is just for convenience
+
+        inverter_data[ data_time_index ] = times[index]
+        inverter_data[ data_cap_index ] = soc_cap
+        inverter_data[ timeon_index ] = True
+
+    #inverter_data["sellTime1"] = start_time
+    #inverter_data["sellTime2"] = end_time
+    #inverter_data["cap1"] = soc_cap
+
+    print(f"setting time bracket for charging to {times[0]}-{times[-1]} with cap of {soc_cap} % ")
     
     r = requests.post(set_url, headers=headers_and_token, json=inverter_data)
 
     print(r)  # status, 200 is good?
-    print(f'time bracket set to {inverter_data["sellTime1"]} and {inverter_data["sellTime2"]}')
+    print(f'time bracket set to {times}')
 
 
 def calc_inverter_charge_wattage():
@@ -256,7 +266,9 @@ def calc_negative_windows(df):
 
 def get_times(df, minutes=90, current_soc=100):
     """
-    Returns the times (min, max) to set the Sunsynk API to for charging
+    Returns the times [time1, time2, time3 etc] to set the Sunsynk API to for charging
+
+    usually time1 would be start, and time2 would be end.
 
     Doesn't contain which day, just the times.  Care must be taken to adjust for correct day!
     """
@@ -286,10 +298,10 @@ def get_times(df, minutes=90, current_soc=100):
 
     # take advantage of cheaper prices
     min_interval_price = df["value_inc_vat"].min()  
-    if min_interval_price < (median_price/1.75):
+    if min_interval_price < (median_price/2.0):
         print( f"adding extra charge time.  Upcoming min price is {min_interval_price} as opposed to recent median of {median_price}" )
         
-        desired_soc = 90  # seeing as it's cheaprt, why not?
+        desired_soc = 90  # seeing as it's cheaper, why not?
         minutes += 20
     
     if min_interval_price < (median_price/3.0):
@@ -322,9 +334,30 @@ def get_times(df, minutes=90, current_soc=100):
     end_time = (cheapest_row.index + datetime.timedelta(minutes=minutes)).time[0]
     print(end_time)
 
-    return(minutes, start_time.strftime("%H:%M"), end_time.strftime("%H:%M"))
+    charge_times = adjust_times_for_day_span( [ start_time, end_time ] )
     
+
+    return(minutes, charge_times)
     
+
+def adjust_times_for_day_span( times ):
+    """
+    if end_time is on the next day (smaller), then we need to make an
+    adjustment as the sunsynk API just breaks and doesn't charge if this occurs
+    """
+    if times[0] > times[1]:
+        return( [ times[0], datetime.time(hour=0, minute=0), times[1] ] )
+    
+    return(times)
+
+
+def format_times( times ): 
+    formatted_times = []
+
+    for t_obj in times:
+        formatted_times.append( t_obj.strftime("%H:%M") )
+    
+    return( formatted_times )
 
 def best_negative_window(row=None, charge_minutes=None):
     """
@@ -332,8 +365,8 @@ def best_negative_window(row=None, charge_minutes=None):
     """
     timedelta_diff = row["valid_to"].max() - row["valid_from"].min()
     minutes = timedelta_diff.seconds / 60.0
-    start_time = row["valid_from"].min().strftime("%H:%M")
-    end_time = row["valid_to"].max().strftime("%H:%M")
+    start_time = row["valid_from"].min()
+    end_time = row["valid_to"].max()
     return(minutes, start_time, end_time)
     
 
@@ -361,7 +394,7 @@ if __name__ == "__main__":
     
 
     print(costs_df)
-    current_minutes, start_time, end_time = get_times(costs_df, minutes=charge_minutes, current_soc=current_soc) 
+    current_minutes, charge_times = get_times(costs_df, minutes=charge_minutes, current_soc=current_soc) 
 
     # handle negative windows
     # filter on recent dates (now)
@@ -378,7 +411,10 @@ if __name__ == "__main__":
                 current_minutes = item[1][0]
                 start_time=item[1][1]
                 end_time=item[1][2]
+                charge_times = adjust_times_for_day_span([start_time, end_time])
                 print( f"Found large negative cost window, resetting times to {item[1][1]} and {item[1][2]}")
-        
     
-    set_inverter_settings(start_time, end_time, soc_cap=desired_soc)
+    
+    formatted_charge_times = format_times(charge_times)
+    print(f"charge times are {formatted_charge_times}")
+    set_inverter_settings(formatted_charge_times, soc_cap=desired_soc)
