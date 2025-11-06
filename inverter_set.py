@@ -24,7 +24,7 @@ loginurl = ("https://api.sunsynk.net/oauth/token")
 
 # API call to set inverter settings
 the_bearer_token_string = None
-desired_soc = 90
+desired_soc = 75
 emergency_soc = 35
 min_soc = 14
 charging_rate = 5500
@@ -131,7 +131,7 @@ def set_inverter_settings(times, soc_cap=100):
 
     for index in range(0, len(times), 1 ):
         data_time_index = f"sellTime{index+1}" 
-        data_cap_index = f"cap{index+1}" 
+        data_cap_index = f"cap{index}"  # cap0 does not exist, this is just for convenience 
         timeon_index = f"time{index}on"  # note that time0on does not exist, this is just for convenience
 
         inverter_data[ data_time_index ] = times[index]
@@ -301,7 +301,7 @@ def get_times(df, minutes=90, current_soc=100):
     if min_interval_price < (median_price/2.0):
         print( f"adding extra charge time.  Upcoming min price is {min_interval_price} as opposed to recent median of {median_price}" )
         
-        desired_soc = 90  # seeing as it's cheaper, why not?
+        desired_soc = 85  # seeing as it's cheaper, why not?
         minutes += 20
     
     if min_interval_price < (median_price/3.0):
@@ -346,7 +346,7 @@ def adjust_times_for_day_span( times ):
     adjustment as the sunsynk API just breaks and doesn't charge if this occurs
     """
     if times[0] > times[1]:
-        return( [ times[0], datetime.time(hour=0, minute=0), times[1] ] )
+        return( [ times[0], datetime.time(hour=24, minute=0), times[1] ] )
     
     return(times)
 
