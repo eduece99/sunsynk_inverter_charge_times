@@ -346,7 +346,7 @@ def adjust_times_for_day_span( times ):
     adjustment as the sunsynk API just breaks and doesn't charge if this occurs
     """
     if times[0] > times[1]:
-        return( [ times[0], datetime.time(hour=24, minute=0), times[1] ] )
+        return( [ times[0], datetime.time(hour=23, minute=59), times[1] ] )
     
     return(times)
 
