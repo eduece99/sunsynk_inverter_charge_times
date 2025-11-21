@@ -2,7 +2,7 @@
 Original credit to author AsTheSeaRises, project SunSynk_API
 https://github.com/AsTheSeaRises/SunSynk_API
 """
-
+# 96762 ticket id for IT support
 import sys
 import requests
 import json
@@ -10,20 +10,23 @@ from io import StringIO
 import pandas as pd
 import datetime
 from math import floor, ceil
-#import typer
+import typer
+from typing_extensions import Annotated
+from pathlib import Path
 
 
 # Enter your username and password that you created on the Sunsynk website.
-my_user_email=str(sys.argv[1]) if len(sys.argv) > 1 else None
-my_user_password=str(sys.argv[2]) if len(sys.argv) > 2 else None
-inverter_id=str(sys.argv[3]) if len(sys.argv) > 3 else None
+#my_user_email=str(sys.argv[1]) if len(sys.argv) > 1 else None
+#my_user_password=str(sys.argv[2]) if len(sys.argv) > 2 else None
+#inverter_id=str(sys.argv[3]) if len(sys.argv) > 3 else None
 
-#loginurl = ('https://pv.inteless.com/oauth/token')
-loginurl = ("https://api.sunsynk.net/oauth/token")
+loginurl = ('https://pv.inteless.com/oauth/token')
+#loginurl = ("https://api.sunsynk.net/oauth/token")
+#loginurl = ("https://api.sunsynk.net/oauth/token/new")
 
 
 # API call to set inverter settings
-the_bearer_token_string = None
+#the_bearer_token_string = None
 desired_soc = 75
 emergency_soc = 35
 min_soc = 14
@@ -33,88 +36,105 @@ default_start_time_soc_threshold = 30.0
 today_date = datetime.datetime.now().date()
 
 api_base_url = "https://api.sunsynk.net/api/v1"
-set_url = f"{api_base_url}/common/setting/{inverter_id}/set"
 
-inverter_status_url = f"{api_base_url}/inverter/battery/{inverter_id}/realtime?sn={inverter_id}&lan=en"
-
-inverter_power_data_url = f'{api_base_url}/inverter/grid/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=pac'
-inverter_battery_power_data_url = f'{api_base_url}/inverter/battery/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=p_bms'
 agile_page_size = 250
 agile_url = f"https://api.octopus.energy/v1/products/AGILE-24-04-03/electricity-tariffs/E-1R-AGILE-24-04-03-A/standard-unit-rates/?page_size={agile_page_size}"
 
 
-inverter_data = {
-  "sn": inverter_id,
-  "safetyType": "0",
-  "battMode": "-1",
-  "solarSell": "1",
-  "pvMaxLimit": "5400",
-  "energyMode": "0",
-  "peakAndVallery": "1",
-  "sysWorkMode": "2",
-  "sellTime1": "11:30",
-  "sellTime2": "13:20",
-  "sellTime3": "09:00",
-  "sellTime4": "11:30",
-  "sellTime5": "16:00",
-  "sellTime6": "21:00",
-  "sellTime1Pac": charging_rate,
-  "sellTime2Pac": charging_rate,
-  "sellTime3Pac": "4000",
-  "sellTime4Pac": "4000",
-  "sellTime5Pac": "4000",
-  "sellTime6Pac": "4000",
-  "cap1": desired_soc,
-  "cap2": min_soc,
-  "cap3": min_soc,
-  "cap4": min_soc,
-  "cap5": min_soc,
-  "cap6": min_soc,
-  "sellTime1Volt": "49",
-  "sellTime2Volt": "49",
-  "sellTime3Volt": "49",
-  "sellTime4Volt": "49",
-  "sellTime5Volt": "49",
-  "sellTime6Volt": "49",
-  "zeroExportPower": "0",
-  "solarMaxSellPower": "6500",
-  "mondayOn": "false",
-  "tuesdayOn": "false",
-  "wednesdayOn": "false",
-  "thursdayOn": "false",
-  "fridayOn": "false",
-  "saturdayOn": "false",
-  "sundayOn": "false",
-  "time1on": True,
-  "time2on": "false",
-  "time3on": "false",
-  "time4on": "false",
-  "time5on": "false",
-  "time6on": "false",
-  "genTime1on": "false",
-  "genTime2on": "false",
-  "genTime3on": "false",
-  "genTime4on": "false",
-  "genTime5on": "false",
-  "genTime6on": "false"
-}
+
+
+def set_globals(inverter_id):
+    
+    global set_url
+    set_url = f"{api_base_url}/common/setting/{inverter_id}/set"
+
+    global inverter_status_url
+    inverter_status_url = f"{api_base_url}/inverter/battery/{inverter_id}/realtime?sn={inverter_id}&lan=en"
+
+    global inverter_power_data_url
+    inverter_power_data_url = f'{api_base_url}/inverter/grid/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=pac'
+    
+    global inverter_battery_power_data_url
+    inverter_battery_power_data_url = f'{api_base_url}/inverter/battery/{inverter_id}/day?lan=en&date={today_date.strftime("%Y-%m-%d")}&column=p_bms'
+ 
+    global inverter_data
+    inverter_data = {
+    "sn": inverter_id,
+    "safetyType": "0",
+    "battMode": "-1",
+    "solarSell": "1",
+    "pvMaxLimit": "5400",
+    "energyMode": "0",
+    "peakAndVallery": "1",
+    "sysWorkMode": "2",
+    "sellTime1": "11:30",
+    "sellTime2": "13:20",
+    "sellTime3": "09:00",
+    "sellTime4": "11:30",
+    "sellTime5": "16:00",
+    "sellTime6": "21:00",
+    "sellTime1Pac": charging_rate,
+    "sellTime2Pac": charging_rate,
+    "sellTime3Pac": "4000",
+    "sellTime4Pac": "4000",
+    "sellTime5Pac": "4000",
+    "sellTime6Pac": "4000",
+    "cap1": desired_soc,
+    "cap2": min_soc,
+    "cap3": min_soc,
+    "cap4": min_soc,
+    "cap5": min_soc,
+    "cap6": min_soc,
+    "sellTime1Volt": "49",
+    "sellTime2Volt": "49",
+    "sellTime3Volt": "49",
+    "sellTime4Volt": "49",
+    "sellTime5Volt": "49",
+    "sellTime6Volt": "49",
+    "zeroExportPower": "0",
+    "solarMaxSellPower": "6500",
+    "mondayOn": "false",
+    "tuesdayOn": "false",
+    "wednesdayOn": "false",
+    "thursdayOn": "false",
+    "fridayOn": "false",
+    "saturdayOn": "false",
+    "sundayOn": "false",
+    "time1on": True,
+    "time2on": "false",
+    "time3on": "false",
+    "time4on": "false",
+    "time5on": "false",
+    "time6on": "false",
+    "genTime1on": "false",
+    "genTime2on": "false",
+    "genTime3on": "false",
+    "genTime4on": "false",
+    "genTime5on": "false",
+    "genTime6on": "false"
+    }
+
 
 # This function will print your bearer/access token
-def my_bearer_token( email, pw):
+def my_bearer_token( email, pw ):
     headers = {
     'Content-type':'application/json',
     'Accept':'application/json'
     }
-
+    #pw="VWBKb3iaQUy76524t5JhGHvbehwdNYPylKwZKEGVIaDPU6LJBzq6u6H/p/5l3Bm+n5Gd3WUodAvnjWHqU0Obn9k7weeB2G0UFR3Xc/kzb/TnfhXpAMju09Bh856FWpgC/U8DxAh0IQK/oK1c4eTVF+WT0Wpm+7Z/g1H1E5o/hGMoq5/uf8ZRjLk6B2ZBX1FxXZk/97Ki0icfHW5TZ3z2sppN2C7gVTNQ5rcRYRtFP1oE2clwXojDyzth295gqaGjf1jpHI2IVDzyMe0Ocu00WbfABzt17CnyOcZd8NpaWxkbpn6S8/RNqBxV65Zh+D8BBIE6QYkunwCKpD/bgYEKEDfZFj4czX8Smc35/QhZKe+PvtCK5gMK0yuqLP2o4m0XMLn8R9r7He/lLJ+u0SfuMd7XYk2h9IWDGqq6HLEktvSTEdSXWf4hrgfsGgoTMd2dZccC5JB4tsRABH93ykvqGw3C+b1/y8KxQJW4+BfpBlkgqLFU898lu34c7OosnQJ9z8BljH2QXcxoWul5r1zQj4g8OdVIaNuTWuRCydgtFGUW0Uf68VHS2pr0IJNajNEpGzS7JXTOT2ZaJEdxGobRGtigIjM0zuH1urEETO20sX+D1nuTqFLu1K2tO1csguXeVn0HWG88E5N4dHjpdNY8WmoqRPtgy8M1tqruSVYnnpc="
+    pw2="NIrk67POo0QxAOiewp2poFfL9o0/mWnEFqIoC/Z8wsUpCHEJzf3MULBGmdfeGrhik4LDk8sIGcsrOkURUDL+vyINQGXpOyT7DTXULjwHG3dIywVopHw+iNnCW4rIV+N0TLg8cj5csjvFrPK3fJ19VYsXhacQGIa2+jzkZuf31JczJoEaxW+Q1JF/ZNdKqkd+O2mly28rAxrlkBRqSuwPIen7BsSzOOL7yfJN2AXEHyr0roEJR/ZZ9/BXGndmeu47TRS3M8HHNLWnhQlby29URQW6Kl6ZyeK6nwm6kZl7RQPwHaVPFaEYdZb4pb3244P3Hq4i603SA74tq4muF2oCjGcH+KTiYJvfadiHbdi436Ymh8VGHHxJ4vRq77WkVjDJ5ilAS7ovw5qCGYGUPA45W2oIMHqxFvjceFJQ0H/tIaN03YW3GwcrWjzoE9SK66gELN237ECp5lVlBx0kbRgaSQsa2YNwvl6syEG7CqZzrhN6JajffIyhwmNH9adZDpIowdwDd5PWfLc4cdloU6eCDLpa+yzH/V465DL6wVIwK4BZuJ5s1eb7oOsQzgMh5X3QegBG+ZWDQjKEf+1XbSS8CwSKCsNDX2SC4WoiACmfgTcjZ5XfGXNiM9G6WK8ISURZYUBvcv43zw0aPLZfLfq8rm4uWT0fc6TdItqBuQYPX1Y="
     payload = {
         "username": email,
         "password": pw,
         "grant_type":"password",
-        "client_id":"csp-web"
+        "client_id":"csp-web",
+        "source":"sunsynk"
         }
     raw_data = requests.post(loginurl, json=payload, headers=headers).json()
+    print(raw_data)
     # Your access token extracted from response
     my_access_token = raw_data["data"]["access_token"]
+
 
     bearer_token_string = ('Bearer '+ my_access_token)
     print('****************************************************')
@@ -370,8 +390,23 @@ def best_negative_window(row=None, charge_minutes=None):
     return(minutes, start_time, end_time)
     
 
-if __name__ == "__main__":
-    the_bearer_token_string = my_bearer_token(my_user_email, my_user_password)
+def main(
+        user_email: Annotated[str, typer.Option("-u", help="user email address")],
+        user_password: Annotated[str, typer.Option("-p", help="user password")],
+        inverter_code: Annotated[str, typer.Option("-i", help="ID for Inverter")],
+        bearer_token_path: Annotated[str, typer.Option("-t", help="path to token file")] = None
+):
+    
+    global the_bearer_token_string
+    if bearer_token_path:
+        bearer_token_path2 = Path(bearer_token_path)
+
+        with bearer_token_path2.open("r") as bearer_token_handle:
+            the_bearer_token_string = bearer_token_handle.read().strip()
+    else:    
+        the_bearer_token_string = my_bearer_token(user_email, user_password)
+
+    set_globals(inverter_code)
 
     actual_charge_rate = abs( calc_battery_charge_wattage() )
     print(f"best battery charge rate of {actual_charge_rate}")
@@ -418,3 +453,7 @@ if __name__ == "__main__":
     formatted_charge_times = format_times(charge_times)
     print(f"charge times are {formatted_charge_times}")
     set_inverter_settings(formatted_charge_times, soc_cap=desired_soc)
+
+
+if __name__ == "__main__":
+    typer.run(main)
