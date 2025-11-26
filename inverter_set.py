@@ -5,6 +5,7 @@ https://github.com/AsTheSeaRises/SunSynk_API
 # 96762 ticket id for IT support
 import sys
 import requests
+import urllib
 import json
 from io import StringIO 
 import pandas as pd
@@ -27,8 +28,8 @@ loginurl = ('https://pv.inteless.com/oauth/token')
 
 # API call to set inverter settings
 #the_bearer_token_string = None
-desired_soc = 75
-emergency_soc = 35
+desired_soc = 80
+#emergency_soc = 35
 min_soc = 14
 charging_rate = 5500
 default_start_time = datetime.time(2,0)  # 2:00 am
@@ -244,8 +245,21 @@ def calc_charge_time(desired_charge_rate, soc_cap=100.0):
 
 
 def get_agile_data():
-    r = requests.get(agile_url)
-    data = r.json()
+
+
+    data = {}
+    try:
+        r = requests.get(agile_url, timeout=30)
+        data = r.json()
+    except Exception as ex:
+        print("requests failed, trying urllib urlopen instead")
+        r = urllib.request.urlopen(agile_url, timeout=30)
+        data_raw = r.read()
+        data = json.loads(data_raw)
+        r.close()
+
+
+
     #df = pd.read_json( StringIO(data) )
     #dtypes = { "valid_from" : "datetime", "valid_to" : "datetime", "value_inc_vat" : "float", "value_exc_vat" : "float", "payment_method": "string" }
     
@@ -310,7 +324,7 @@ def get_times(df, minutes=90, current_soc=100):
     df = df.loc[ date_mask ].sort_values( "valid_from", ascending=True ).set_index("valid_from")
 
     # if soc is very low, force to earlier charge
-    if current_soc <= emergency_soc:
+    if current_soc <= default_start_time_soc_threshold:
         df = df.between_time("0:00", "5:00")
     
 
@@ -344,12 +358,17 @@ def get_times(df, minutes=90, current_soc=100):
     print(f"cheapest row of rolling data with price of {min_day_price}:")
     print(cheapest_row)
 
+    start_time = cheapest_row.index.time[0]
+    end_time = (cheapest_row.index + datetime.timedelta(minutes=minutes)).time[0]
+
+    """
     if current_soc < default_start_time_soc_threshold:
-        start_time = cheapest_row.index.replace( hour=default_start_time.hour, minute=default_start_time.minute  )
+        #start_time = cheapest_row.index.replace( hour=default_start_time.hour, minute=default_start_time.minute  )
+        start_time = default_start_time
         end_time = (cheapest_row.index + datetime.timedelta(minutes=minutes)).time[0]
     else:
         start_time = cheapest_row.index.time[0]
-        end_time = (cheapest_row.index + datetime.timedelta(minutes=minutes)).time[0]
+        end_time = (cheapest_row.index + datetime.timedelta(minutes=minutes)).time[0]"""
 
     end_time = (cheapest_row.index + datetime.timedelta(minutes=minutes)).time[0]
     print(end_time)
