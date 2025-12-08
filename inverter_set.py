@@ -10,10 +10,20 @@ import json
 from io import StringIO 
 import pandas as pd
 import datetime
+import time
 from math import floor, ceil
 import typer
 from typing_extensions import Annotated
 from pathlib import Path
+
+import uuid
+import hashlib
+from base64 import b64decode, b64encode
+import hmac
+
+from Crypto.Cipher import PKCS1_v1_5  # pycryptodome
+from Crypto.PublicKey import RSA
+#result = hmac.new(secret, msg=msg, digestmod=hashlib.sha256).hexdigest()
 
 
 # Enter your username and password that you created on the Sunsynk website.
@@ -21,27 +31,29 @@ from pathlib import Path
 #my_user_password=str(sys.argv[2]) if len(sys.argv) > 2 else None
 #inverter_id=str(sys.argv[3]) if len(sys.argv) > 3 else None
 
-loginurl = ('https://pv.inteless.com/oauth/token')
-#loginurl = ("https://api.sunsynk.net/oauth/token")
-#loginurl = ("https://api.sunsynk.net/oauth/token/new")
+#loginurl = ('https://pv.inteless.com/oauth/token')
+#loginurl = "https://api.sunsynk.net/oauth/token"
+loginurl = "https://api.sunsynk.net/oauth/token/new"
 
 
 # API call to set inverter settings
 #the_bearer_token_string = None
-desired_soc = 80
+desired_soc = 90
 #emergency_soc = 35
 min_soc = 14
 charging_rate = 5500
 default_start_time = datetime.time(2,0)  # 2:00 am
 default_start_time_soc_threshold = 30.0
 today_date = datetime.datetime.now().date()
+default_source = "sunsynk"
 
+login_base_url = "https://api.sunsynk.net"
 api_base_url = "https://api.sunsynk.net/api/v1"
 
 agile_page_size = 250
 agile_url = f"https://api.octopus.energy/v1/products/AGILE-24-04-03/electricity-tariffs/E-1R-AGILE-24-04-03-A/standard-unit-rates/?page_size={agile_page_size}"
 
-
+VERIFY_SSL = False
 
 
 def set_globals(inverter_id):
@@ -115,23 +127,162 @@ def set_globals(inverter_id):
     "genTime6on": "false"
     }
 
+"""def createUuid() :
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
+    return v.toString(16);
+    })
+"""
+
+def urlToSign(headers, data) :
+    params = {}
+    contentType = headers["Content-Type"]
+    
+    if contentType and contentType.startswith('application/x-www-form-urlencoded') :
+        formParams = data.split("&")
+        for p in formParams :
+            ss = p.split('=')
+            params[ss[0]] =  ss[1]
+        
+
+    ss = "oauth/token".split('?')
+    if ( len(ss) > 1 and ss[1]) :
+        queryParams = ss[1].split('&')
+        for p in queryParams :
+            ss = p.split('=')
+            params[ss[0]] = ss[1]
+        
+
+    sortedKeys = list( params.keys() )
+    sortedKeys.sort()
+
+    first = True
+    qs = None
+    for k in sortedKeys:
+        s = k + "=" + params[k]
+        qs = qs + "&" + s  if qs else s
+        print("key=" + k + " value=" + params[k] )
+    
+
+    url = ss[0]
+    return url + "?" + qs if qs else url 
+    
+
+
+def _fetch_public_key() -> str:
+    nonce = str(int(time.time() * 1000))
+    query = f"nonce={nonce}&source={default_source}"
+    sign = hashlib.md5((query + "POWER_VIEW").encode("utf-8")).hexdigest()
+    path = f"{login_base_url}/anonymous/publicKey?{query}&sign={sign}"
+    #payload = self._request("GET", path, require_success=True)
+    payload = requests.get(path).json()
+    public_key = payload["data"] if isinstance(payload, str) else payload.get("data")
+    if not public_key:
+        raise Exception("Failed to obtain Sunsynk public key")
+    return public_key
+
+ 
+def _encrypt_password(password : str, base64_key: str) -> str:
+        pem = f"-----BEGIN PUBLIC KEY-----\n{base64_key}\n-----END PUBLIC KEY-----"
+        rsa_key = RSA.import_key(pem)
+        cipher = PKCS1_v1_5.new(rsa_key)
+        encrypted = cipher.encrypt( password.encode("utf-8"))
+        return b64encode(encrypted).decode("ascii")
+
+
+# Sunsynk support gave me this
+def sunsynk_sign(method, url, headers, body, content_type, app_secret, forced_header_list):
+    string_to_sign, signature_headers = build_string_to_sign(
+        method, headers, url, body, content_type, forced_header_list
+    )
+    signature = base64.b64encode(
+        hmac.new(app_secret.encode("utf-8"), string_to_sign.encode("utf-8"), hashlib.sha256).digest()
+    ).decode("ascii")
+    return signature, signature_headers
+
 
 # This function will print your bearer/access token
 def my_bearer_token( email, pw ):
-    headers = {
-    'Content-type':'application/json',
-    'Accept':'application/json'
-    }
-    #pw="VWBKb3iaQUy76524t5JhGHvbehwdNYPylKwZKEGVIaDPU6LJBzq6u6H/p/5l3Bm+n5Gd3WUodAvnjWHqU0Obn9k7weeB2G0UFR3Xc/kzb/TnfhXpAMju09Bh856FWpgC/U8DxAh0IQK/oK1c4eTVF+WT0Wpm+7Z/g1H1E5o/hGMoq5/uf8ZRjLk6B2ZBX1FxXZk/97Ki0icfHW5TZ3z2sppN2C7gVTNQ5rcRYRtFP1oE2clwXojDyzth295gqaGjf1jpHI2IVDzyMe0Ocu00WbfABzt17CnyOcZd8NpaWxkbpn6S8/RNqBxV65Zh+D8BBIE6QYkunwCKpD/bgYEKEDfZFj4czX8Smc35/QhZKe+PvtCK5gMK0yuqLP2o4m0XMLn8R9r7He/lLJ+u0SfuMd7XYk2h9IWDGqq6HLEktvSTEdSXWf4hrgfsGgoTMd2dZccC5JB4tsRABH93ykvqGw3C+b1/y8KxQJW4+BfpBlkgqLFU898lu34c7OosnQJ9z8BljH2QXcxoWul5r1zQj4g8OdVIaNuTWuRCydgtFGUW0Uf68VHS2pr0IJNajNEpGzS7JXTOT2ZaJEdxGobRGtigIjM0zuH1urEETO20sX+D1nuTqFLu1K2tO1csguXeVn0HWG88E5N4dHjpdNY8WmoqRPtgy8M1tqruSVYnnpc="
-    pw2="NIrk67POo0QxAOiewp2poFfL9o0/mWnEFqIoC/Z8wsUpCHEJzf3MULBGmdfeGrhik4LDk8sIGcsrOkURUDL+vyINQGXpOyT7DTXULjwHG3dIywVopHw+iNnCW4rIV+N0TLg8cj5csjvFrPK3fJ19VYsXhacQGIa2+jzkZuf31JczJoEaxW+Q1JF/ZNdKqkd+O2mly28rAxrlkBRqSuwPIen7BsSzOOL7yfJN2AXEHyr0roEJR/ZZ9/BXGndmeu47TRS3M8HHNLWnhQlby29URQW6Kl6ZyeK6nwm6kZl7RQPwHaVPFaEYdZb4pb3244P3Hq4i603SA74tq4muF2oCjGcH+KTiYJvfadiHbdi436Ymh8VGHHxJ4vRq77WkVjDJ5ilAS7ovw5qCGYGUPA45W2oIMHqxFvjceFJQ0H/tIaN03YW3GwcrWjzoE9SK66gELN237ECp5lVlBx0kbRgaSQsa2YNwvl6syEG7CqZzrhN6JajffIyhwmNH9adZDpIowdwDd5PWfLc4cdloU6eCDLpa+yzH/V465DL6wVIwK4BZuJ5s1eb7oOsQzgMh5X3QegBG+ZWDQjKEf+1XbSS8CwSKCsNDX2SC4WoiACmfgTcjZ5XfGXNiM9G6WK8ISURZYUBvcv43zw0aPLZfLfq8rm4uWT0fc6TdItqBuQYPX1Y="
+
+
+
+    #nonce = str( uuid.uuid4() )
+    nonce = int(time.time() * 1000)
+    appKey="204013305"
+    appSecret=""
+    
+    signature=""
+    signatureHeaders=""
+
+    public_key = _fetch_public_key()
+    encrypted_password = _encrypt_password(pw, public_key)
+    sign_str = f"nonce={nonce}&source={default_source}{public_key[:10]}"
+    sign = hashlib.md5(sign_str.encode("utf-8")).hexdigest()
+
     payload = {
         "username": email,
-        "password": pw,
+        "password": encrypted_password,
+        "nonce": nonce,
+        "sign" : sign,
         "grant_type":"password",
         "client_id":"csp-web",
         "source":"sunsynk"
-        }
-    raw_data = requests.post(loginurl, json=payload, headers=headers).json()
+    }
+
+    md5= b64encode( hashlib.md5( json.dumps(payload).encode() ).digest() ).decode() 
+
+    
+    headers = {
+        'Content-Type':'application/json',
+        'Accept':'application/json'
+    }
+
+    headers2 = {
+        'Content-Type':'application/json;charset=UTF-8',
+        'Accept':'application/json',
+        "Content-MD5":md5,
+        "X-Ca-Nonce":str(nonce),
+        "X-Ca-Key":appKey,
+        "X-Ca-Signature":signature,
+        "X-Ca-Signature-Headers":signatureHeaders
+    }
+    #pw="VWBKb3iaQUy76524t5JhGHvbehwdNYPylKwZKEGVIaDPU6LJBzq6u6H/p/5l3Bm+n5Gd3WUodAvnjWHqU0Obn9k7weeB2G0UFR3Xc/kzb/TnfhXpAMju09Bh856FWpgC/U8DxAh0IQK/oK1c4eTVF+WT0Wpm+7Z/g1H1E5o/hGMoq5/uf8ZRjLk6B2ZBX1FxXZk/97Ki0icfHW5TZ3z2sppN2C7gVTNQ5rcRYRtFP1oE2clwXojDyzth295gqaGjf1jpHI2IVDzyMe0Ocu00WbfABzt17CnyOcZd8NpaWxkbpn6S8/RNqBxV65Zh+D8BBIE6QYkunwCKpD/bgYEKEDfZFj4czX8Smc35/QhZKe+PvtCK5gMK0yuqLP2o4m0XMLn8R9r7He/lLJ+u0SfuMd7XYk2h9IWDGqq6HLEktvSTEdSXWf4hrgfsGgoTMd2dZccC5JB4tsRABH93ykvqGw3C+b1/y8KxQJW4+BfpBlkgqLFU898lu34c7OosnQJ9z8BljH2QXcxoWul5r1zQj4g8OdVIaNuTWuRCydgtFGUW0Uf68VHS2pr0IJNajNEpGzS7JXTOT2ZaJEdxGobRGtigIjM0zuH1urEETO20sX+D1nuTqFLu1K2tO1csguXeVn0HWG88E5N4dHjpdNY8WmoqRPtgy8M1tqruSVYnnpc="
+    pw2="NIrk67POo0QxAOiewp2poFfL9o0/mWnEFqIoC/Z8wsUpCHEJzf3MULBGmdfeGrhik4LDk8sIGcsrOkURUDL+vyINQGXpOyT7DTXULjwHG3dIywVopHw+iNnCW4rIV+N0TLg8cj5csjvFrPK3fJ19VYsXhacQGIa2+jzkZuf31JczJoEaxW+Q1JF/ZNdKqkd+O2mly28rAxrlkBRqSuwPIen7BsSzOOL7yfJN2AXEHyr0roEJR/ZZ9/BXGndmeu47TRS3M8HHNLWnhQlby29URQW6Kl6ZyeK6nwm6kZl7RQPwHaVPFaEYdZb4pb3244P3Hq4i603SA74tq4muF2oCjGcH+KTiYJvfadiHbdi436Ymh8VGHHxJ4vRq77WkVjDJ5ilAS7ovw5qCGYGUPA45W2oIMHqxFvjceFJQ0H/tIaN03YW3GwcrWjzoE9SK66gELN237ECp5lVlBx0kbRgaSQsa2YNwvl6syEG7CqZzrhN6JajffIyhwmNH9adZDpIowdwDd5PWfLc4cdloU6eCDLpa+yzH/V465DL6wVIwK4BZuJ5s1eb7oOsQzgMh5X3QegBG+ZWDQjKEf+1XbSS8CwSKCsNDX2SC4WoiACmfgTcjZ5XfGXNiM9G6WK8ISURZYUBvcv43zw0aPLZfLfq8rm4uWT0fc6TdItqBuQYPX1Y="
+    pw3="wQgfoM0K2M49OoelK4L2O+/gMHRbKbk0ESX+KdiyOLIjMtt8zrVjYA6NXas6SLND3AmMFn0V9xEJIOv2tR6VnjfOvDEDGFih+TTMORS6k7cD0ttI0u0ZHLJdGFs7Z9Z3PBvMcR4pVZ3A43rfFILeWpNpKnZ8srHr3v8D0vNfHqPD0arUZDdCnhpTO+DrEIwXO3RWkIalLndk8BP2XVwPie9Nl7FDVJNFwFQsrjIZaS0xUQ7n+EWmvXP2mPQAlTfXdL1C+QbeUjIRbt1/zByxUS9j5ENqqEgEDJnAegM52eKJf9An4puV9yQR2YNqH680WB5C3ucTYI08RsG23dJOPBRa/X9B5l/ZuGK0zE9oRjr77MomNKzQxpV9OPN30vuW2rWrXgY4763udMnHbJ1mfWbh2TqwsmXW2nG2rBcqUl/pVxLHSj8c0tkk1hE41Mz2EigPDDed2SkNlgP/b+WyJ1UckQL//ZkJcVAmuSxT5jw9HdNv0zLNvyunOo0Gb4lKir72COw+qEMwNiwN5R9lobbYSHWZmSXhtGH70v3+xYOU5uaP3o4ojN0mYFtveKIHMbeQgwey/oWJzpfShHZwtf0e86C8so16O1yA28WoDW4urZGCTf8YGz5KBPgNgHt2zfb72+Gc0c+YP7Q97i8T5OuiM6lM40gdbMlFVG46Qi8="
+    #https://api.sunsynk.net/anonymous/publicKey?nonce=1764362336831&source=sunsynk&sign=d94ce64114e212d137e432a6bc2b3cfe
+    #"MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA6yy4V6hvLYraejCCUwsFOANRi0RIH3kxIklnrvQdzUKDhdkRWqMIAo3ubXSWQfkVQEs3IzpzytwhYCJv3juEXxUR6BFxClWryIz3fHd6FCRdhU2B7y179vIl2ouBNOaYLher4328dixjkEHXf8dIjumDMgp9Lrjn3JNpropKhYoFlAogWZQCzF2L52Vuu3B/rf5Wj0SNCAHQBSm75pk6bDKmYBFT3jdcQ15OY23fB+HxON/cLxT8C7ZOf2Tl/4cHhmjAGX6Bj0URnLM+k65/sDpEx69NWDNKInvPls8bfNF/+e/LZMAG8bwXI4rVlWOhocdbIedcuHmKqlu/FgnXAiyWpqQlGRHE49GFiFKWBcoyLvSXlIMYIWmL+vS0Dghym81NU9cc+oByCGFApcY0xjO8qAnF/ZKpzAcURIc8yOW5C8pTdC2dKvY98ay50as5W1bXDj3GsPFdHvnjel4lKHWDF8MSitAFLMYysVfyBsFm6+SHnxWr9Se71/jglL+9qC2pQY81kkeHmKJgHCRHZ6m52GTNmMtd+fJ2nfFCBUty619uRGE5P0AXJnGDA+21IBgDCyF8tFhxIuIrNoZcWcYTiuvphfDkmT8KvEfoaRQGd9U5GxWMQEtiI4Uosn9/cGWAswK+g5qaX45f3CYG/YSHgs8s0u4tuo5bxG/M0aECAwEAAQ=="
+    
+    textToSign = "POST";
+    textToSign += headers["Accept"] + "\n";
+    textToSign += md5 + "\n";
+    textToSign += headers["Content-Type"] + "\n";
+    textToSign += "\n";
+
+    
+    signatureHeaders = None;
+    sortedKeys = list(headers.keys())
+    sortedKeys.sort()
+    for headerName in sortedKeys:
+        textToSign += headerName + ":" + headers[headerName] + "\n";
+    signatureHeaders = ",".join(sortedKeys)
+    
+    textToSign += urlToSign(headers, payload)    
+
+    print( f"textToSign is {textToSign}")
+
+    hash = hmac.new(appSecret.encode("utf-8"), msg=textToSign.encode("utf-8"), digestmod=hashlib.sha256).digest()
+    #print("hash:" + hash)
+    signature = b64encode(hash).decode("ascii")
+    print("signature:" + signature)
+
+    headers['X-Ca-Signature'] = signature
+    headers['X-Ca-Signature-Headers'] = signatureHeaders
+    
+
+    print(loginurl)
+    print(payload)
+    body_json = json.dumps(payload, separators=(",",":"))
+    raw_data = requests.post(loginurl, data=body_json, headers=headers, verify=VERIFY_SSL).json()
     print(raw_data)
     # Your access token extracted from response
     my_access_token = raw_data["data"]["access_token"]
@@ -206,7 +357,7 @@ def calc_battery_charge_wattage():
         'Accept': 'application/json',
         'Authorization': the_bearer_token_string
     }
-    
+    print(the_bearer_token_string)
     r = requests.get(inverter_battery_power_data_url, headers=headers_and_token)
     data = r.json()
 
