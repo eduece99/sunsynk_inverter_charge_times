@@ -651,9 +651,12 @@ class SunsynkInverterOctopusGo(SunsynkInverter):
                 print(f"Min day export price {median_price} is greater than night charging cost {OCTOPUS_GO_NIGHT_CHARGING_COST}, setting desired_soc to 100%")
                 soc_cap = 100
             else:
-                solar_quotient = 12.0 / sunlight_data["sunshine_hours"]
-                sigmoid = 1/(1+exp(-solar_quotient))
-                soc_cap = min(100, max(60, int(sigmoid * 100)))
+                growth_rate = 1.0  # adjust this value to control the steepness of the curve.  Lower - less steep (more linear), higher - more steep (more exponential)
+                # rate of 1.0 should suffice.  Increase if you have greater solar charging rate vs battery capacity
+                # 1.0 was used for max solar generation of 2.0kW and battery capacity of 15.12kWh.  2.0 would work for 4.0kW solar generation and 15.12kWh battery capacity, etc.
+                solar_quotient = sunlight_data["sunshine_hours"] / 24.0  # proportion of sunshine hours in day
+                sigmoid = 2/(1+exp(solar_quotient * growth_rate))  # modified logistic function to map solar_quotient to a value between 0 and 1
+                soc_cap = min(100, max(50, int(sigmoid * 100)))
                 print(f"Min day export price {median_price} is worse than night charging cost {OCTOPUS_GO_NIGHT_CHARGING_COST}, setting desired_soc to {soc_cap}% based on estimated solar generation")
 
             idx = 1
