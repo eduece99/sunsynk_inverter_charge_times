@@ -6,6 +6,8 @@ It connects to the SunSynk API, reads the inverter’s current battery state, es
 
 This is useful if you want to charge your battery during cheap off-peak periods or during very low-price windows on Octopus Agile / Octopus Go tariffs.
 
+**Note** - This is not endorsed by SunSynk or Octopus.  *Use at your own risk*!
+
 ## What it does
 
 The main script in [inverter_set.py](inverter_set.py) does the following:
@@ -143,6 +145,7 @@ For Go mode:
 - The script makes real changes to your inverter settings. Use it carefully and test it with your own configuration.
 - It can be run on a schedule via cron or a small automation process if you want it to update the battery schedule automatically.
 
+
 ## Typical workflow
 
 1. Log in to SunSynk and get a bearer token
@@ -171,3 +174,11 @@ In short, this project is a home-energy automation helper that lets a SunSynk in
 - automatic API updates to inverter charging windows
 
 If you want to use this project, the essential entry point is [inverter_set.py](inverter_set.py), and the most important command is the CLI form shown above.
+
+## References
+
+Original credit to author AsTheSeaRises, project SunSynk_API.
+https://github.com/AsTheSeaRises/SunSynk_API
+
+Password salting help from:
+https://github.com/restrive/sunsynk/blob/c9f9ec806d3e0bb7113461e89d9915865f646562/custom_components/sunsynk_sync/api_client.py
