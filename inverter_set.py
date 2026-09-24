@@ -5,6 +5,8 @@ https://github.com/AsTheSeaRises/SunSynk_API
 
 Password salting help from:
 https://github.com/restrive/sunsynk/blob/c9f9ec806d3e0bb7113461e89d9915865f646562/custom_components/sunsynk_sync/api_client.py
+
+Edmund Duesbury, 2024-06-05
 """
 
 import datetime
@@ -61,6 +63,8 @@ def round_to_nearest_half_hour(value: datetime.datetime) -> datetime.datetime:
 
 class SunsynkInverter:
     """Encapsulate the Sunsynk auth, API, and scheduling logic.
+
+    Do not use on its own, please use one of the subclasses for specific tariff strategies.
 
     Attributes:
         inverter_id (str): Unique inverter serial number.
@@ -344,6 +348,10 @@ class SunsynkInverter:
     def get_agile_data(self) -> pd.DataFrame:
         """Fetch the Octopus Agile pricing data.
 
+        Octopus Agile pricing data is retrieved from the Octopus Energy API and returned as a pandas DataFrame with timezone-normalised timestamps.
+
+        Override as needed for different pricing APIs or data sources.
+
         Returns:
             pd.DataFrame: Agile pricing dataset with timezone-normalised timestamps.
         """
@@ -512,6 +520,23 @@ class SunsynkInverter:
         """Compute and apply the optimal inverter charging schedule.
 
         Override this for different functionality, e.g., to use a different pricing API or to implement a different scheduling algorithm.
+
+        Returns:
+            list[str]: Formatted charging times applied to the inverter.
+        """
+        return []
+
+
+class SunsynkInverterAgile(SunsynkInverter):
+    """Explicit subclass for standard Agile tariff scheduling.
+
+    This keeps the existing scheduling behaviour in a named subclass so code can
+    choose between the default tariff strategy and the Octopus Go override in a
+    clearer way without changing the underlying logic.
+    """
+
+    def calculate_schedule(self) -> list[str]:
+        """Compute and apply the standard inverter charging schedule.
 
         Returns:
             list[str]: Formatted charging times applied to the inverter.
@@ -691,7 +716,7 @@ def main(
     if octopus_go:
         inverter = SunsynkInverterOctopusGo(inverter_id=inverter_code)
     else:
-        inverter = SunsynkInverter(inverter_id=inverter_code)
+        inverter = SunsynkInverterAgile(inverter_id=inverter_code)
 
     inverter.resolve_bearer_token(user_email, user_password, bearer_token_path)
     inverter.calculate_schedule()
