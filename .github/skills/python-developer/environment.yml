@@ -1,0 +1,13 @@
+name: venv
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pytest
+  - pip:
+      - pandas
+      - requests
+      - typer
+      - pycryptodome
+      - typing_extensions
